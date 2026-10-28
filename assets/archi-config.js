@@ -1,13 +1,12 @@
 /* ============================================================
-   ARCHI RL — Configuration Firebase (seul fichier à modifier)
+   ARCHI RL — Configuration Firebase (projet ArchiRL)
    Console Firebase → Paramètres du projet → Vos applications → Web
-   → copier le bloc firebaseConfig ici.
    ============================================================ */
 window.ARCHI_FIREBASE_CONFIG = {
-  apiKey: 'A_REMPLIR',
-  authDomain: 'A_REMPLIR.firebaseapp.com',
-  projectId: 'A_REMPLIR',
-  storageBucket: 'A_REMPLIR.firebasestorage.app',
-  messagingSenderId: 'A_REMPLIR',
-  appId: 'A_REMPLIR'
+  apiKey: 'AIzaSyBvC-mZ7T77aF1VCux8yajLSV1xFXz65Q4',
+  authDomain: 'archirl-5a5f2.firebaseapp.com',
+  projectId: 'archirl-5a5f2',
+  storageBucket: 'archirl-5a5f2.firebasestorage.app',
+  messagingSenderId: '813322223715',
+  appId: '1:813322223715:web:5546c530a0d2466fd6b856'
 };
