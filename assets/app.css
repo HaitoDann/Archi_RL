@@ -1,0 +1,68 @@
+/* ============================================================
+   ARCHI RL — Composants propres à la version Rocket League
+   S'appuie sur theme.css (repris de l'Archi LoL).
+   ============================================================ */
+.ar-rl{color:var(--accent);font-weight:700}
+main.page{padding-top:28px;padding-bottom:64px}
+.ar-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.ar-head h1{margin:0}
+.ar-head p{color:var(--dim);margin-top:4px;max-width:620px}
+.ar-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ar-grid{display:grid;gap:14px}
+.ar-g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ar-g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.ar-g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:900px){.ar-g3,.ar-g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.ar-g2,.ar-g3,.ar-g4{grid-template-columns:1fr}}
+.ar-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:18px}
+.ar-card h2,.ar-card h3{margin-bottom:12px}
+.ar-sub{font-size:12px;color:var(--muted)}
+.ar-kpi{font-family:var(--font-mono);font-size:1.7rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
+.ar-empty{color:var(--muted);font-size:13px;padding:18px;text-align:center;border:1px dashed var(--border-2);border-radius:var(--r)}
+.ar-pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:500;
+  background:color-mix(in srgb,var(--c,var(--accent)) 14%,transparent);color:var(--c,var(--accent));white-space:nowrap}
+.ar-dot{width:8px;height:8px;border-radius:50%;background:var(--c,var(--accent));display:inline-block;flex-shrink:0}
+.ar-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  background:var(--surface-2);border:1px solid var(--border-2);font-weight:600;font-size:14px}
+.ar-av.lg{width:56px;height:56px;font-size:22px}
+
+/* Formulaires */
+.ar-lbl{display:block;font-size:12px;color:var(--dim);margin:12px 0 5px;font-weight:500}
+.ar-in,.ar-sel,.ar-ta{width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--border-2);color:var(--text);
+  font:inherit;font-size:14px;border-radius:var(--r)}
+.ar-ta{min-height:80px;resize:vertical}
+.ar-row{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media(max-width:520px){.ar-row{grid-template-columns:1fr}}
+.ar-err{color:var(--err);font-size:12.5px;min-height:16px;margin-top:8px}
+
+/* Modale */
+.ar-ov{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;
+  padding:6vh 16px;overflow:auto;opacity:0;transition:opacity .18s}
+.ar-ov.open{opacity:1}
+.ar-modal{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:22px;box-shadow:var(--shadow-3);
+  transform:translateY(8px);transition:transform .2s ease-out}
+.ar-ov.open .ar-modal{transform:none}
+
+/* Garde d'accès */
+.ar-gate{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;background:var(--bg);color:var(--text)}
+.ar-spin{width:28px;height:28px;border-radius:50%;border:2.5px solid var(--border-2);border-top-color:var(--accent);animation:arspin .8s linear infinite}
+@keyframes arspin{to{transform:rotate(360deg)}}
+
+/* Segmenté */
+.ar-seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:3px;gap:2px}
+.ar-seg button{border:0;background:transparent;color:var(--dim);font:inherit;font-size:13px;padding:6px 12px;border-radius:calc(var(--r) - 2px);cursor:pointer}
+.ar-seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.2)}
+
+/* Révélation */
+@media(prefers-reduced-motion:no-preference){
+  .ar-reveal{opacity:0;transform:translateY(10px);transition:opacity .4s ease-out,transform .4s ease-out}
+  .ar-reveal.in{opacity:1;transform:none}
+}
+
+/* Table */
+.ar-table{width:100%;border-collapse:collapse;font-size:13.5px}
+.ar-table th{text-align:left;font-weight:500;color:var(--muted);font-size:12px;padding:8px 10px;border-bottom:1px solid var(--border)}
+.ar-table td{padding:10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.ar-table tr:last-child td{border-bottom:0}
+.ar-scroll{overflow-x:auto}
+code{font-family:var(--font-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;border-radius:4px}

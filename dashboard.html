@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARCHI RL — Dashboard</title>
+<link rel="icon" type="image/png" href="assets/logo-plazma.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css?v=1.0.0">
+<link rel="stylesheet" href="assets/app.css?v=1.0.0">
+<style>
+  .pl{display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
+  .pl:last-child{border-bottom:0}
+  .pl-n{font-weight:600}
+  .pl-r{margin-left:auto;text-align:right}
+  .mini{width:90px;height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin-top:5px;margin-left:auto}
+  .mini i{display:block;height:100%;background:var(--accent)}
+  .ses{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+  .ses:last-child{border-bottom:0}
+  .ses-d{width:46px;text-align:center;flex-shrink:0}
+  .ses-d b{display:block;font-family:var(--font-mono);font-size:1.15rem}
+  .ses-d span{font-size:11px;color:var(--muted)}
+  .ses.next{background:var(--accent-soft);border-radius:var(--r);padding:10px;margin:0 -10px;border-bottom:0}
+  .milestones{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:700px){.milestones{grid-template-columns:1fr}}
+  .ms{border-left:2px solid var(--c,var(--border-2));padding:4px 0 4px 12px}
+  .ms b{display:block;font-size:13px}
+  .ms span{font-size:12.5px;color:var(--dim)}
+</style>
+</head>
+<body>
+<main class="page" style="max-width:1160px">
+  <div class="ar-head">
+    <div><h1>Dashboard</h1><p id="hello">Vue d'ensemble de l'équipe Rocket League.</p></div>
+  </div>
+
+  <div class="ar-grid ar-g4" id="kpis" style="margin-bottom:14px"></div>
+
+  <div class="ar-grid ar-g2">
+    <section class="ar-card"><h3>Cette semaine</h3><div id="week"><div class="ar-empty">Chargement…</div></div></section>
+    <section class="ar-card"><h3>Roster</h3><div id="roster"><div class="ar-empty">Chargement…</div></div></section>
+    <section class="ar-card"><h3>Objectifs du mois</h3><div id="goals"><div class="ar-empty">Chargement…</div></div></section>
+    <section class="ar-card"><h3>Cap du projet</h3>
+      <div class="milestones">
+        <div class="ms" id="ms3"><b>À 3 mois</b><span>Un roster solide et une bonne entente.</span></div>
+        <div class="ms" id="ms6"><b>À 6 mois</b><span>Toute l'équipe confirme un niveau haut Champion.</span></div>
+        <div class="ms" id="ms12"><b>À 12 mois</b><span>Premiers résultats en tournoi, premiers opens français.</span></div>
+      </div>
+      <div id="cap" style="margin-top:16px"></div>
+    </section>
+  </div>
+</main>
+
+<script src="assets/archi-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="assets/rl-data.js?v=1.0.0"></script>
+<script src="assets/archi.js?v=1.0.0"></script>
+<script>
+AR.mountNav('dashboard');
+const $ = s => document.querySelector(s), esc = AR.esc;
+const TYPES = Object.fromEntries(RL.SESSION_TYPES.map(t => [t.id, t]));
+const lastMmr = f => (f && f.mmr || []).slice().sort((a, b) => a.date < b.date ? -1 : 1).pop();
+const CHAMP3 = RL.RANKS.indexOf('Champion III');
+let fiches = {}, roster = [], sat = null;
+
+AR.ready.then(async ({ profile }) => {
+  if (!profile) return;
+  $('#hello').textContent = `Salut ${profile.name || profile.username}, voici où en est l'équipe Rocket League.`;
+  const week = AR.isoWeek(new Date());
+  AR.db.collection('rl').doc('schedule-' + week).onSnapshot(d => renderWeek(d.exists ? d.data().sessions || [] : []), () => renderWeek([]));
+  if (AR.isStaff()) {
+    AR.db.collection('rl-players').onSnapshot(s => { fiches = {}; s.docs.forEach(d => fiches[d.id] = d.data()); renderAll(); });
+    AR.db.collection('rl-satisfaction').where('month', '==', AR.monthKey(new Date())).get()
+      .then(s => { const v = s.docs.map(d => d.data().scores.note).filter(Boolean); sat = v.length ? { avg: v.reduce((a, b) => a + b, 0) / v.length, n: v.length } : { avg: null, n: 0 }; renderAll(); }).catch(() => {});
+  } else if (AR.myPlayerId()) {
+    AR.db.collection('rl-players').doc(AR.myPlayerId()).onSnapshot(d => { fiches = { [AR.myPlayerId()]: d.exists ? d.data() : {} }; renderAll(); });
+  }
+  AR.onRoster(r => { roster = r; renderAll(); });
+});
+
+function renderWeek(sessions) {
+  const mon = AR.weekMonday(AR.isoWeek(new Date())), now = new Date();
+  const list = sessions.map(s => { const d = new Date(mon); d.setDate(mon.getDate() + s.day); const [h, m] = (s.start || '00:00').split(':').map(Number); d.setHours(h, m); return Object.assign({ at: d }, s); }).sort((a, b) => a.at - b.at);
+  const next = list.find(s => s.at >= now);
+  $('#week').innerHTML = list.length ? list.map(s => { const t = TYPES[s.type] || TYPES.autre; return `<div class="ses${s === next ? ' next' : ''}">
+    <div class="ses-d"><b>${s.at.getDate()}</b><span>${AR.DAYS[s.day].slice(0, 3)}</span></div>
+    <div style="flex:1"><div style="font-weight:600">${esc(s.title || t.label)}</div><div class="ar-sub">${esc(s.start || '')}${s.end ? '–' + esc(s.end) : ''}</div></div>
+    <span class="ar-pill" style="--c:${t.color}">${t.label}</span></div>`; }).join('') + '<a class="btn btn-ghost btn-sm" href="planning.html" style="margin-top:12px">Ouvrir le planning</a>'
+    : '<div class="ar-empty">Rien de prévu cette semaine. <a href="planning.html" style="color:var(--accent)">Planifier</a></div>';
+}
+
+function renderAll() {
+  const staff = AR.isStaff(), mine = AR.myPlayerId();
+  const tit = roster.filter(p => p.status === 'titulaire');
+  const withMmr = roster.map(p => lastMmr(fiches[p.id])).filter(x => x && x.m3);
+  const avgM = withMmr.length ? Math.round(withMmr.reduce((s, x) => s + x.m3, 0) / withMmr.length) : null;
+  const allMastery = roster.filter(p => fiches[p.id]).map(p => RL.score((fiches[p.id] || {}).levels));
+  const month = AR.monthKey(new Date());
+  const goals = roster.flatMap(p => ((fiches[p.id] || {}).goals || []).filter(g => g.month === month).map(g => Object.assign({ who: p.name, pid: p.id }, g)));
+
+  $('#kpis').innerHTML = staff ? `
+    <div class="ar-card"><div class="ar-sub">Roster</div><div class="ar-kpi">${tit.length}<span class="ar-sub"> titulaires · ${roster.length - tit.length} remp.</span></div></div>
+    <div class="ar-card"><div class="ar-sub">MMR 3v3 moyen</div><div class="ar-kpi">${avgM || '—'}</div></div>
+    <div class="ar-card"><div class="ar-sub">Maîtrise moyenne de l'arbre</div><div class="ar-kpi">${allMastery.length ? Math.round(allMastery.reduce((a, b) => a + b, 0) / allMastery.length) + '%' : '—'}</div></div>
+    <div class="ar-card"><div class="ar-sub">Satisfaction du mois</div><div class="ar-kpi">${sat && sat.avg != null ? sat.avg.toFixed(1) + '<span class="ar-sub"> / 10 · ' + sat.n + ' rép.</span>' : '—'}</div></div>`
+    : (() => { const f = fiches[mine] || {}, l = lastMmr(f); const g = (f.goals || []).filter(x => x.month === month); return `
+    <div class="ar-card"><div class="ar-sub">Mon rang 3v3</div><div style="font-weight:600;font-size:1.2rem;color:${RL.rankColor(l && l.rank)}">${l && l.rank ? esc(l.rank) : '—'}</div></div>
+    <div class="ar-card"><div class="ar-sub">Mon MMR 3v3</div><div class="ar-kpi">${l && l.m3 || '—'}</div></div>
+    <div class="ar-card"><div class="ar-sub">Ma maîtrise de l'arbre</div><div class="ar-kpi">${RL.score(f.levels)}%</div></div>
+    <div class="ar-card"><div class="ar-sub">Mes objectifs du mois</div><div class="ar-kpi">${g.filter(x => x.result === 'atteint').length}<span class="ar-sub"> / ${g.length} atteints</span></div></div>`; })();
+
+  $('#roster').innerHTML = roster.length ? roster.map(p => {
+    const f = fiches[p.id], l = lastMmr(f), sc = f ? RL.score(f.levels) : null, canSee = staff || p.id === mine;
+    return `<${canSee ? 'a href="progression.html?p=' + encodeURIComponent(p.id) + '"' : 'div'} class="pl">
+      <div class="ar-av">${esc(p.emoji || AR.initials(p.name))}</div>
+      <div><div class="pl-n">${esc(p.name)}</div><div class="ar-sub">${AR.statusLabel[p.status] || ''}</div></div>
+      <div class="pl-r">${canSee && f ? `<div style="font-size:13px;color:${RL.rankColor(l && l.rank)}">${l && l.rank ? esc(l.rank) : '—'}${l && l.m3 ? ' · <span class="mono">' + l.m3 + '</span>' : ''}</div>
+        <div class="mini" title="Maîtrise de l'arbre : ${sc}%"><i style="width:${sc}%"></i></div>` : ''}</div>
+    </${canSee ? 'a' : 'div'}>`;
+  }).join('') : `<div class="ar-empty">Roster vide.${staff ? ' <a href="mercato.html" style="color:var(--accent)">Ouvrir le mercato</a>' : ''}</div>`;
+
+  const shown = staff ? goals : goals.filter(g => g.pid === mine);
+  const RES = { atteint: ['Atteint', 'var(--ok)'], partiel: ['Partiel', 'var(--warn)'], manque: ['Non atteint', 'var(--err)'] };
+  $('#goals').innerHTML = shown.length ? shown.map(g => `<div class="pl" style="align-items:flex-start">
+      <div style="flex:1">${staff ? `<div class="ar-sub">${esc(g.who)}</div>` : ''}<div style="font-size:13.5px">${esc(g.text)}</div></div>
+      <span class="ar-pill" style="--c:${g.result ? RES[g.result][1] : g.status === 'valide' ? 'var(--accent)' : 'var(--muted)'}">${g.result ? RES[g.result][0] : g.status === 'valide' ? 'Validé' : 'À valider'}</span></div>`).join('')
+    : '<div class="ar-empty">Aucun objectif fixé ce mois-ci. <a href="progression.html" style="color:var(--accent)">En ajouter</a></div>';
+
+  // Cap : jalons visibles par tous, chiffres pour le staff
+  if (staff) {
+    const ranks = roster.map(p => { const l = lastMmr(fiches[p.id]); return l && l.rank ? RL.RANKS.indexOf(l.rank) : -1; });
+    const highChamp = ranks.filter(i => i >= CHAMP3).length;
+    $('#ms3').style.setProperty('--c', tit.length >= 3 ? 'var(--ok)' : 'var(--warn)');
+    $('#ms6').style.setProperty('--c', roster.length && highChamp === roster.length ? 'var(--ok)' : 'var(--border-2)');
+    $('#cap').innerHTML = `<div class="ar-sub">Titulaires en place : <b class="mono">${tit.length}/3</b> · Joueurs Champion III ou plus : <b class="mono">${highChamp}/${roster.length}</b></div>`;
+  }
+}
+</script>
+</body>
+</html>

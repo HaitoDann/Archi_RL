@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARCHI RL — Comptes</title>
+<link rel="icon" type="image/png" href="assets/logo-plazma.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css?v=1.0.0">
+<link rel="stylesheet" href="assets/app.css?v=1.0.0">
+<style>
+  .cred{margin-top:12px;padding:12px;border-radius:var(--r);background:var(--accent-soft);font-family:var(--font-mono);font-size:13px;line-height:1.7}
+  .roles{font-size:12.5px;color:var(--dim);line-height:1.6;margin-top:14px}
+  .roles b{color:var(--text)}
+  .off td{opacity:.5}
+</style>
+</head>
+<body>
+<main class="page" style="max-width:1100px">
+  <div class="ar-head"><div><h1>Comptes</h1><p>Créer les accès, choisir le rôle et lier chaque joueur à sa fiche de progression.</p></div></div>
+  <div class="ar-grid" style="grid-template-columns:minmax(0,340px) minmax(0,1fr);align-items:start" id="cols">
+    <section class="ar-card">
+      <h3>Nouveau compte</h3>
+      <label class="ar-lbl">Nom affiché</label><input class="ar-in" id="nName" placeholder="ex. Haito">
+      <label class="ar-lbl">Nom d'utilisateur (connexion)</label><input class="ar-in" id="nUser" placeholder="ex. haito" autocomplete="off">
+      <label class="ar-lbl">Mot de passe provisoire (6 min.)</label><input class="ar-in" id="nPw" autocomplete="new-password">
+      <label class="ar-lbl">Rôle</label>
+      <select class="ar-sel" id="nRole"><option value="joueur">Joueur</option><option value="capitaine">Capitaine</option><option value="admin">Admin</option></select>
+      <label class="ar-lbl">Fiche joueur liée</label><select class="ar-sel" id="nPlayer"></select>
+      <button class="btn btn-primary" id="create" style="width:100%;margin-top:16px">Créer le compte</button>
+      <div id="out"></div>
+      <div class="roles"><b>Admin</b> : tout, comptes compris.<br><b>Capitaine</b> : voit et modifie tout sauf les comptes.<br><b>Joueur</b> : sa fiche, le planning, ses dispos, le questionnaire.</div>
+    </section>
+    <section class="ar-card ar-scroll"><h3>Membres</h3><div id="list"><div class="ar-empty">Chargement…</div></div></section>
+  </div>
+</main>
+
+<script src="assets/archi-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="assets/archi.js?v=1.0.0" data-access="admin"></script>
+<script>
+AR.mountNav('admin');
+const $ = s => document.querySelector(s), esc = AR.esc;
+if (innerWidth < 800) $('#cols').style.gridTemplateColumns = '1fr';
+let users = [], roster = [];
+const norm = s => s.trim().toLowerCase().replace(/\s+/g, '');
+const playerOpts = sel => '<option value="">— Aucune —</option>' + roster.map(p => `<option value="${esc(p.id)}"${p.id === sel ? ' selected' : ''}>${esc(p.name)} (${AR.statusLabel[p.status]})</option>`).join('');
+
+AR.ready.then(({ profile }) => {
+  if (!profile || !AR.isAdmin()) return;
+  AR.onRoster(r => { roster = r; $('#nPlayer').innerHTML = playerOpts($('#nPlayer').value); renderList(); });
+  load();
+});
+async function load() {
+  const s = await AR.db.collection('users').get();
+  users = s.docs.map(d => Object.assign({ uid: d.id }, d.data())).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  renderList();
+}
+function renderList() {
+  if (!users.length) { $('#list').innerHTML = '<div class="ar-empty">Aucun compte.</div>'; return; }
+  const me = AR.user() && AR.user().uid;
+  $('#list').innerHTML = `<table class="ar-table"><thead><tr><th>Membre</th><th>Rôle</th><th>Fiche liée</th><th></th></tr></thead><tbody>
+    ${users.map(u => `<tr class="${u.disabled ? 'off' : ''}">
+      <td><b>${esc(u.name)}</b><div class="ar-sub mono">${esc(u.username)}</div></td>
+      <td><select class="ar-sel" data-role="${u.uid}" ${u.uid === me ? 'disabled title="Ton propre rôle"' : ''}>${['joueur', 'capitaine', 'admin'].map(r => `<option value="${r}"${u.role === r ? ' selected' : ''}>${AR.ROLES[r].label}</option>`).join('')}</select></td>
+      <td><select class="ar-sel" data-player="${u.uid}">${playerOpts(u.playerId)}</select></td>
+      <td style="text-align:right">${u.uid === me ? '' : `<button class="btn btn-sm ${u.disabled ? '' : 'btn-danger'}" data-toggle="${u.uid}">${u.disabled ? 'Réactiver' : 'Désactiver'}</button>`}</td>
+    </tr>`).join('')}</tbody></table>`;
+  const upd = (uid, patch) => AR.db.collection('users').doc(uid).update(patch).then(() => { Object.assign(users.find(u => u.uid === uid), patch); AR.toast('Compte mis à jour.'); renderList(); }).catch(e => AR.toast('Erreur : ' + e.message, 'err'));
+  document.querySelectorAll('[data-role]').forEach(s => s.onchange = () => upd(s.dataset.role, { role: s.value }));
+  document.querySelectorAll('[data-player]').forEach(s => s.onchange = () => upd(s.dataset.player, { playerId: s.value || null }));
+  document.querySelectorAll('[data-toggle]').forEach(b => b.onclick = () => { const u = users.find(x => x.uid === b.dataset.toggle); upd(u.uid, { disabled: !u.disabled }); });
+}
+$('#create').onclick = async () => {
+  const name = $('#nName').value.trim(), username = norm($('#nUser').value), pw = $('#nPw').value;
+  if (!name || !username) return AR.toast("Nom et nom d'utilisateur requis.", 'err');
+  if (pw.length < 6) return AR.toast('Mot de passe : 6 caractères minimum.', 'err');
+  const btn = $('#create'); btn.disabled = true; btn.textContent = 'Création…';
+  try {
+    // App secondaire : crée le compte sans déconnecter l'admin.
+    const sec = firebase.apps.find(a => a.name === 'secondary') || firebase.initializeApp(AR.CONFIG, 'secondary');
+    const cred = await sec.auth().createUserWithEmailAndPassword(username + '@' + AR.USER_DOMAIN, pw);
+    await sec.auth().signOut();
+    await AR.db.collection('users').doc(cred.user.uid).set({ name, username, role: $('#nRole').value, playerId: $('#nPlayer').value || null, disabled: false, createdAt: Date.now() });
+    $('#out').innerHTML = `<div class="cred">Compte créé<br>Utilisateur : ${esc(username)}<br>Mot de passe : ${esc(pw)}</div>`;
+    ['#nName', '#nUser', '#nPw'].forEach(s => $(s).value = '');
+    load();
+  } catch (e) {
+    const map = { 'auth/email-already-in-use': "Ce nom d'utilisateur est déjà pris.", 'auth/invalid-email': "Nom d'utilisateur invalide.", 'auth/weak-password': 'Mot de passe trop faible.' };
+    AR.toast(map[e.code] || 'Erreur : ' + e.message, 'err');
+  } finally { btn.disabled = false; btn.textContent = 'Créer le compte'; }
+};
+</script>
+</body>
+</html>

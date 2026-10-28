@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARCHI RL — Connexion</title>
+<link rel="icon" type="image/png" href="assets/logo-plazma.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css?v=1.0.0">
+<link rel="stylesheet" href="assets/app.css?v=1.0.0">
+<style>
+  body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .login{width:360px;max-width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:30px 26px 24px}
+  .brand{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:18px;text-align:center}
+  .brand img{width:46px;height:38px;object-fit:contain}
+  .brand h1{font-size:20px}
+  .login .btn{width:100%;margin-top:16px;justify-content:center}
+</style>
+</head>
+<body>
+<form class="login" id="f" autocomplete="on">
+  <div class="brand">
+    <img src="assets/logo-plazma.png" alt="">
+    <h1>ARCHI <span class="ar-rl">RL</span></h1>
+    <div class="ar-sub">PlaZma Esport · Rocket League</div>
+  </div>
+  <label class="ar-lbl" for="u">Nom d'utilisateur</label>
+  <input class="ar-in" id="u" autocomplete="username" required>
+  <label class="ar-lbl" for="p">Mot de passe</label>
+  <input class="ar-in" id="p" type="password" autocomplete="current-password" required>
+  <button class="btn btn-primary" id="go" type="submit">Se connecter</button>
+  <div class="ar-err" id="err" style="text-align:center"></div>
+</form>
+<script src="assets/archi-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="assets/archi.js?v=1.0.0" data-access="public"></script>
+<script>
+  const err = document.getElementById('err');
+  if (!AR.configured) err.textContent = "Firebase n'est pas encore configuré (assets/archi-config.js).";
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, '');
+  document.getElementById('f').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!AR.auth) return;
+    const btn = document.getElementById('go');
+    btn.disabled = true; btn.textContent = 'Connexion…'; err.textContent = '';
+    try {
+      await AR.auth.signInWithEmailAndPassword(norm(u.value) + '@' + AR.USER_DOMAIN, p.value);
+      location.replace('index.html');
+    } catch (x) {
+      err.textContent = 'Identifiants incorrects.';
+      btn.disabled = false; btn.textContent = 'Se connecter';
+    }
+  });
+</script>
+</body>
+</html>

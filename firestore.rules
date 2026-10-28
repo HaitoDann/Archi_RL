@@ -1,0 +1,66 @@
+rules_version = '2';
+
+// ============================================================
+//  ARCHI RL — Règles de sécurité Firestore (PlaZma Esport · Rocket League)
+//  Ce fichier est la SEULE protection réelle des données.
+//  À coller dans la console Firebase → Firestore → Règles → Publier.
+//
+//  users/{uid} : { name, username, role: 'admin'|'capitaine'|'joueur',
+//                  playerId, disabled }
+//  - admin     : tout + gestion des comptes
+//  - capitaine : voit et modifie tout sauf les comptes
+//  - joueur    : sa propre fiche, le planning (lecture), ses dispos,
+//                le questionnaire de satisfaction (envoi)
+// ============================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function active() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && me().disabled != true;
+    }
+    function isAdmin() { return active() && me().role == 'admin'; }
+    function isStaff() { return active() && (me().role == 'admin' || me().role == 'capitaine'); }
+    function ownsPlayer(pid) { return active() && me().get('playerId', null) == pid; }
+
+    // ---- Comptes ----
+    match /users/{uid} {
+      allow read:  if signedIn() && (request.auth.uid == uid || isStaff());
+      allow write: if isAdmin();
+    }
+
+    // ---- Documents uniques : roster, planning hebdo ----
+    match /rl/{docId} {
+      allow read:  if active() && (docId == 'roster' || docId.matches('schedule-.*') || isStaff());
+      allow write: if isStaff();
+    }
+
+    // ---- Fiches de progression (arbre, objectifs, MMR) ----
+    // Un joueur ne voit et ne modifie QUE sa fiche ; le staff voit tout.
+    match /rl-players/{pid} {
+      allow read, write: if isStaff() || ownsPlayer(pid);
+    }
+
+    // ---- Mercato (candidats, notes d'essai) : staff uniquement ----
+    match /rl-mercato/{id} {
+      allow read, write: if isStaff();
+    }
+
+    // ---- Disponibilités : un document par membre (id == uid) ----
+    match /rl-availability/{uid} {
+      allow read:  if active();
+      allow write: if active() && (request.auth.uid == uid || isStaff());
+    }
+
+    // ---- Satisfaction : envoi par tout membre, lecture staff ----
+    match /rl-satisfaction/{id} {
+      allow create: if active();
+      allow read:   if isStaff();
+      allow delete: if isAdmin();
+      allow update: if false;
+    }
+  }
+}

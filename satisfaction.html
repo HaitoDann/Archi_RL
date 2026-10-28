@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARCHI RL — Satisfaction</title>
+<link rel="icon" type="image/png" href="assets/logo-plazma.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css?v=1.0.0">
+<link rel="stylesheet" href="assets/app.css?v=1.0.0">
+<style>
+  .q{padding:16px 0;border-bottom:1px solid var(--border)}
+  .q:last-of-type{border-bottom:0}
+  .q-l{font-weight:500;margin-bottom:10px}
+  .scale{display:flex;gap:6px;flex-wrap:wrap}
+  .scale button{min-width:40px;height:38px;border-radius:var(--r);border:1px solid var(--border-2);background:var(--surface-2);color:var(--dim);font:inherit;font-family:var(--font-mono);cursor:pointer}
+  .scale button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .ends{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:6px;max-width:260px}
+  .bar{height:8px;background:var(--surface-2);border-radius:999px;overflow:hidden;margin-top:6px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .res-row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .res-row:last-child{border-bottom:0}
+  .ans{border-top:1px solid var(--border);padding:12px 0;font-size:13.5px}
+  .ans:first-child{border-top:0}
+  .done{text-align:center;padding:40px 20px}
+</style>
+</head>
+<body>
+<main class="page" style="max-width:860px">
+  <div class="ar-head">
+    <div>
+      <h1>Satisfaction</h1>
+      <p>Le questionnaire du mois : ton ressenti sur l'équipe, les entraînements et l'organisation. Chaque retour aide à faire progresser le projet.</p>
+    </div>
+    <div class="ar-seg" id="tabs" style="display:none"><button data-v="form" class="on">Questionnaire</button><button data-v="res">Résultats</button></div>
+  </div>
+  <div id="root"></div>
+</main>
+
+<script src="assets/archi-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="assets/archi.js?v=1.0.0"></script>
+<script>
+AR.mountNav('satisfaction');
+const $ = s => document.querySelector(s), esc = AR.esc;
+
+const SCALES = [
+  { k: 'note',        label: 'Note globale du projet Rocket League', max: 10, l: 'Très déçu', r: 'Excellent' },
+  { k: 'ambiance',    label: 'Ambiance dans l’équipe',              max: 5,  l: 'Très mauvaise', r: 'Excellente' },
+  { k: 'motivation',  label: 'Motivation',                           max: 5,  l: 'Très faible', r: 'Très élevée' },
+  { k: 'serenite',    label: 'Fatigue et stress',                    max: 5,  l: 'Très stressé', r: 'Aucun stress' },
+  { k: 'scrims',      label: 'Qualité des scrims',                   max: 5,  l: 'Inutiles', r: 'Très utiles' },
+  { k: 'training',    label: 'Utilité des entraînements et reviews', max: 5,  l: 'Pas du tout', r: 'Énormément' },
+  { k: 'orga',        label: 'Organisation et planning',             max: 5,  l: 'Brouillon', r: 'Carré' },
+  { k: 'comstaff',    label: 'Communication avec le staff',          max: 5,  l: 'Absente', r: 'Excellente' },
+  { k: 'progress',    label: 'Progression personnelle ressentie',    max: 5,  l: 'Aucune', r: 'Énorme' }
+];
+const TEXTS = [
+  { k: 'good',   label: 'Ce qui marche bien' },
+  { k: 'better', label: 'Ce qui pourrait être amélioré' },
+  { k: 'free',   label: 'Message libre au staff' }
+];
+
+AR.ready.then(({ profile }) => {
+  if (!profile) return;
+  if (AR.isStaff()) {
+    $('#tabs').style.display = '';
+    $('#tabs').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      $('#tabs').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      b.dataset.v === 'res' ? results() : form();
+    });
+  }
+  form();
+});
+
+function form() {
+  const ans = {};
+  $('#root').innerHTML = `<section class="ar-card">
+    <div class="ar-sub">Questionnaire de ${AR.monthLabel(AR.monthKey(new Date())).toLowerCase()}</div>
+    ${SCALES.map(s => `<div class="q"><div class="q-l">${s.label}</div>
+      <div class="scale" data-k="${s.k}">${Array.from({ length: s.max }, (_, i) => `<button type="button" data-n="${i + 1}">${i + 1}</button>`).join('')}</div>
+      <div class="ends"><span>${s.l}</span><span>${s.r}</span></div></div>`).join('')}
+    ${TEXTS.map(t => `<div class="q"><div class="q-l">${t.label}</div><textarea class="ar-ta" data-t="${t.k}"></textarea></div>`).join('')}
+    <label style="display:flex;gap:8px;align-items:center;margin:16px 0 4px;font-size:14px"><input type="checkbox" id="anon"> Envoyer anonymement</label>
+    <div class="ar-err" id="err"></div>
+    <button class="btn btn-primary" id="send" style="margin-top:8px">Envoyer mon questionnaire</button>
+  </section>`;
+  document.querySelectorAll('.scale').forEach(sc => sc.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    ans[sc.dataset.k] = Number(b.dataset.n);
+    sc.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  }));
+  $('#send').onclick = async () => {
+    const miss = SCALES.filter(s => !ans[s.k]);
+    if (miss.length) { $('#err').textContent = 'Il manque une réponse : ' + miss[0].label.toLowerCase() + '.'; return; }
+    const p = AR.profile() || {}, anon = $('#anon').checked;
+    const doc = { scores: ans, month: AR.monthKey(new Date()), at: Date.now(), name: anon ? null : (p.name || p.username), uid: anon ? null : AR.user().uid };
+    TEXTS.forEach(t => doc[t.k] = document.querySelector(`[data-t="${t.k}"]`).value.trim());
+    $('#send').disabled = true;
+    try {
+      await AR.db.collection('rl-satisfaction').add(doc);
+      $('#root').innerHTML = '<section class="ar-card done"><h2>Merci !</h2><p class="dim" style="margin-top:8px">Ton questionnaire a bien été envoyé au staff.</p></section>';
+    } catch (e) { console.error(e); $('#err').textContent = 'Envoi impossible : ' + e.message; $('#send').disabled = false; }
+  };
+}
+
+async function results() {
+  $('#root').innerHTML = '<div class="ar-empty">Chargement…</div>';
+  const snap = await AR.db.collection('rl-satisfaction').get();
+  const all = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  const months = [...new Set(all.map(a => a.month))].sort().reverse();
+  if (!months.length) { $('#root').innerHTML = '<div class="ar-empty">Aucune réponse pour l’instant.</div>'; return; }
+  let m = months[0];
+  const draw = () => {
+    const list = all.filter(a => a.month === m).sort((a, b) => b.at - a.at);
+    const avg = k => { const v = list.map(a => a.scores[k]).filter(Boolean); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+    $('#root').innerHTML = `
+      <div class="ar-tools" style="margin-bottom:14px"><select class="ar-sel" id="mSel" style="width:auto">${months.map(x => `<option value="${x}"${x === m ? ' selected' : ''}>${AR.monthLabel(x)}</option>`).join('')}</select>
+        <span class="ar-sub">${list.length} réponse${list.length > 1 ? 's' : ''}</span></div>
+      <div class="ar-grid ar-g2">
+        <section class="ar-card"><h3>Moyennes</h3>${SCALES.map(s => { const a = avg(s.k); return `<div class="res-row"><span>${s.label}</span><b class="mono">${a == null ? '—' : a.toFixed(1)}<span class="ar-sub"> / ${s.max}</span></b>
+          <div class="bar" style="grid-column:1/3"><i style="width:${a == null ? 0 : a / s.max * 100}%;background:${a == null ? 'none' : a / s.max >= .7 ? 'var(--ok)' : a / s.max >= .5 ? 'var(--warn)' : 'var(--err)'}"></i></div></div>`; }).join('')}</section>
+        <section class="ar-card"><h3>Réponses</h3>${list.map(a => `<div class="ans"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(a.name || 'Anonyme')}</b><span class="ar-sub">${new Date(a.at).toLocaleDateString('fr-FR')} · ${a.scores.note}/10</span></div>
+          ${TEXTS.filter(t => a[t.k]).map(t => `<div style="margin-top:6px"><span class="ar-sub">${t.label}</span><div style="white-space:pre-wrap">${esc(a[t.k])}</div></div>`).join('')}
+          ${AR.isAdmin() ? `<button class="btn btn-ghost btn-sm" style="margin-top:8px" data-del="${a.id}">Supprimer</button>` : ''}</div>`).join('')}</section>
+      </div>`;
+    $('#mSel').onchange = e => { m = e.target.value; draw(); };
+    document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if (!confirm('Supprimer cette réponse ?')) return;
+      await AR.db.collection('rl-satisfaction').doc(b.dataset.del).delete();
+      all.splice(all.findIndex(x => x.id === b.dataset.del), 1); draw();
+    });
+  };
+  draw();
+}
+</script>
+</body>
+</html>

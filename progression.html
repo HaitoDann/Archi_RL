@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARCHI RL — Progression</title>
+<link rel="icon" type="image/png" href="assets/logo-plazma.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css?v=1.0.0">
+<link rel="stylesheet" href="assets/app.css?v=1.0.0">
+<style>
+  /* ---- En-tête joueur ---- */
+  .hero{display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:center;padding:22px}
+  .hero-id{display:flex;gap:14px;align-items:center}
+  .hero-name{font-size:1.5rem;font-weight:600;line-height:1.15}
+  .hero-stats{display:flex;gap:26px;flex-wrap:wrap}
+  .hero-stat .ar-sub{margin-bottom:2px}
+  .ring{position:relative;width:96px;height:96px}
+  .ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+  .ring .val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring .val b{font-family:var(--font-mono);font-size:1.45rem;font-weight:500}
+  .ring .val span{font-size:10.5px;color:var(--muted)}
+  @media(max-width:760px){.hero{grid-template-columns:1fr}.ring{justify-self:start}}
+
+  /* ---- Légende ---- */
+  .legend{display:flex;gap:8px 16px;flex-wrap:wrap;font-size:12.5px;color:var(--dim);margin:18px 0 14px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:12px;height:12px;border-radius:4px;background:var(--c)}
+
+  /* ---- Barre de composition (répartition des niveaux) ---- */
+  .compo{display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--surface-2)}
+  .compo i{display:block;height:100%;background:var(--c);transition:width .4s ease-out}
+
+  /* ---- Arbre ---- */
+  .tree{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  @media(max-width:980px){.tree{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:640px){.tree{grid-template-columns:1fr}}
+  .branch{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px 16px 18px;display:flex;flex-direction:column;gap:12px}
+  .b-head{display:flex;align-items:center;gap:10px}
+  .b-ico{width:32px;height:32px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .b-ico svg{width:17px;height:17px}
+  .b-title{font-weight:600;flex:1}
+  .b-pct{font-family:var(--font-mono);font-size:13px;color:var(--dim)}
+  .tier{position:relative;padding-left:16px}
+  .tier::before{content:"";position:absolute;left:4px;top:22px;bottom:-14px;width:2px;background:var(--border)}
+  .tier:last-child::before{display:none}
+  .tier-lbl{font-size:11.5px;color:var(--muted);margin-bottom:7px;position:relative}
+  .tier-lbl::before{content:"";position:absolute;left:-16px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--border-2)}
+  .tier.done .tier-lbl::before{background:var(--ok);border-color:var(--ok)}
+  .nodes{display:flex;flex-direction:column;gap:6px}
+  .node{position:relative;display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;font:inherit;color:var(--text);
+    padding:8px 10px;border-radius:var(--r);border:1px solid color-mix(in srgb,var(--c) 40%,var(--border));
+    background:color-mix(in srgb,var(--c) 11%,var(--surface));transition:transform .12s ease-out,background-color .15s,border-color .15s}
+  .node:hover{background:color-mix(in srgb,var(--c) 20%,var(--surface))}
+  .node:active{transform:scale(.99)}
+  .node[disabled]{cursor:default}
+  .node .lv{width:10px;height:10px;border-radius:50%;background:var(--c);flex-shrink:0;box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 25%,transparent)}
+  .node .nm{flex:1;font-size:13.5px;font-weight:500}
+  .node .st{font-size:11px;color:color-mix(in srgb,var(--c) 75%,var(--text));white-space:nowrap}
+  .node.hint{opacity:.62}
+  .node.pop{animation:pop .5s ease-out}
+  @keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
+
+  /* ---- Sélecteur de niveau ---- */
+  .lvpick{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+  .lvbtn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface-2);
+    color:var(--text);font:inherit;font-size:14px;cursor:pointer;text-align:left}
+  .lvbtn:hover{border-color:var(--c)}
+  .lvbtn.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 16%,var(--surface))}
+  .lvbtn .sw{width:14px;height:14px}
+
+  /* ---- Objectifs ---- */
+  .goal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--border)}
+  .goal:last-child{border-bottom:0}
+  .goal-txt{flex:1;font-size:14px;white-space:pre-wrap}
+  .goal-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .goal-act{display:flex;gap:6px;flex-shrink:0}
+
+  /* ---- MMR ---- */
+  .chart{width:100%;height:190px;display:block}
+  .chart .grid line{stroke:var(--border)}
+  .chart text{fill:var(--muted);font-size:10px;font-family:var(--font-mono)}
+  .mmr-form{display:grid;grid-template-columns:1.1fr 1.4fr .9fr .9fr auto;gap:8px;align-items:end}
+  @media(max-width:700px){.mmr-form{grid-template-columns:1fr 1fr}}
+  .section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:30px 0 12px}
+  .section-title h2{margin:0}
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="ar-head">
+    <div>
+      <h1>Progression</h1>
+      <p>L'arbre de mécaniques, les objectifs du mois et l'évolution du MMR. Clique sur une mécanique pour mettre à jour ton niveau.</p>
+    </div>
+    <div class="ar-tools">
+      <select class="ar-sel" id="playerSel" style="display:none;min-width:200px"></select>
+      <span class="sync-pill"><span class="sync-dot" id="syncDot"></span><span id="syncText">…</span></span>
+    </div>
+  </div>
+
+  <div id="root"><div class="ar-empty">Chargement…</div></div>
+</main>
+
+<script src="assets/archi-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="assets/rl-data.js?v=1.0.0"></script>
+<script src="assets/archi.js?v=1.0.0"></script>
+<script>
+AR.mountNav('progression');
+const $ = s => document.querySelector(s);
+const esc = AR.esc;
+const LV = RL.LEVELS;
+
+let pid = null, player = null, fiche = null, link = null;
+let month = AR.monthKey(new Date());
+let lastPopped = null;
+
+const blank = () => ({ levels: {}, goals: [], mmr: [] });
+
+AR.ready.then(({ profile }) => {
+  if (!profile) return;
+  const qs = new URLSearchParams(location.search).get('p');
+  if (AR.isStaff()) {
+    AR.onRoster(list => {
+      const sel = $('#playerSel');
+      if (!list.length) { $('#root').innerHTML = '<div class="ar-empty">Aucun joueur dans le roster. Ajoute des titulaires depuis le <a href="mercato.html" style="color:var(--accent)">Mercato</a>.</div>'; return; }
+      sel.style.display = '';
+      sel.innerHTML = list.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${AR.statusLabel[p.status] || ''}</option>`).join('');
+      const want = pid || (qs && list.some(p => p.id === qs) ? qs : (AR.myPlayerId() && list.some(p => p.id === AR.myPlayerId()) ? AR.myPlayerId() : list[0].id));
+      sel.value = want;
+      sel.onchange = () => open(sel.value);
+      if (want !== pid) open(want);
+      else { player = list.find(p => p.id === pid) || player; render(); }
+    });
+  } else {
+    const mine = AR.myPlayerId();
+    if (!mine) { $('#root').innerHTML = '<div class="ar-empty">Ton compte n\'est pas encore lié à une fiche joueur. Demande à un admin de faire le lien dans « Comptes ».</div>'; return; }
+    AR.onRoster(list => { player = list.find(p => p.id === mine) || { id: mine, name: profile.name }; if (pid) render(); else open(mine); });
+  }
+});
+
+function open(id) {
+  pid = id;
+  player = AR.roster().find(p => p.id === id) || player || { id, name: id };
+  fiche = null;
+  if (link) link.stop();
+  $('#root').innerHTML = '<div class="ar-empty">Chargement de la fiche…</div>';
+  history.replaceState(null, '', '?p=' + encodeURIComponent(id));
+  link = AR.sync({ col: 'rl-players', docId: id, onData: d => { fiche = Object.assign(blank(), d || {}); render(); } });
+}
+const save = () => { fiche.name = player.name; link.save(fiche); };
+
+/* ================= Rendu ================= */
+function render() {
+  if (!fiche) return;
+  const levels = fiche.levels || {};
+  const total = RL.score(levels);
+  const counts = LV.map(l => RL.ALL.filter(m => (levels[m.id] || 0) === l.v).length);
+  const last = (fiche.mmr || []).slice().sort((a, b) => a.date < b.date ? -1 : 1).pop();
+  const monthGoals = (fiche.goals || []).filter(g => g.month === AR.monthKey(new Date()));
+  const done = monthGoals.filter(g => g.result === 'atteint').length;
+  const C = 2 * Math.PI * 42;
+
+  $('#root').innerHTML = `
+    <section class="ar-card hero ar-reveal in">
+      <div class="hero-id">
+        <div class="ar-av lg">${esc(player.emoji || AR.initials(player.name))}</div>
+        <div>
+          <div class="hero-name">${esc(player.name)}</div>
+          <div style="margin-top:6px">${player.status ? `<span class="ar-pill">${AR.statusLabel[player.status]}</span>` : ''}</div>
+        </div>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat"><div class="ar-sub">Rang 3v3</div><div style="font-weight:600;color:${RL.rankColor(last && last.rank)}">${last && last.rank ? esc(last.rank) : '—'}</div></div>
+        <div class="hero-stat"><div class="ar-sub">MMR 3v3</div><div class="ar-kpi" style="font-size:1.25rem">${last && last.m3 ? last.m3 : '—'}</div></div>
+        <div class="hero-stat"><div class="ar-sub">Mécaniques acquises</div><div class="ar-kpi" style="font-size:1.25rem">${counts[3] + counts[4]}<span class="ar-sub"> / ${RL.ALL.length}</span></div></div>
+        <div class="hero-stat"><div class="ar-sub">Objectifs du mois</div><div class="ar-kpi" style="font-size:1.25rem">${done}<span class="ar-sub"> / ${monthGoals.length}</span></div></div>
+      </div>
+      <div class="ring" title="Maîtrise globale de l'arbre">
+        <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="var(--surface-2)" stroke-width="9"/>
+          <circle cx="50" cy="50" r="42" fill="none" stroke="var(--accent)" stroke-width="9" stroke-linecap="round"
+            stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - total / 100)}" style="transition:stroke-dashoffset .6s ease-out"/></svg>
+        <div class="val"><b>${total}%</b><span>maîtrise</span></div>
+      </div>
+    </section>
+
+    <div class="legend">${LV.slice().reverse().map(l => `<span><i class="sw" style="--c:${l.color}"></i>${l.label} <b class="mono">${counts[l.v]}</b></span>`).join('')}</div>
+    <div class="compo" style="margin-bottom:18px">${LV.slice().reverse().map(l => `<i style="--c:${l.color};width:${counts[l.v] / RL.ALL.length * 100}%"></i>`).join('')}</div>
+
+    <section class="tree">${RL.TREE.map(branchHtml).join('')}</section>
+
+    <div class="section-title"><h2>Objectifs mensuels</h2>
+      <div class="ar-tools">
+        <button class="btn btn-ghost btn-sm" id="mPrev" aria-label="Mois précédent">←</button>
+        <b id="mLbl" style="min-width:130px;text-align:center">${AR.monthLabel(month)}</b>
+        <button class="btn btn-ghost btn-sm" id="mNext" aria-label="Mois suivant">→</button>
+        <button class="btn btn-primary btn-sm" id="addGoal">Ajouter un objectif</button>
+      </div>
+    </div>
+    <section class="ar-card" id="goals">${goalsHtml()}</section>
+
+    <div class="section-title"><h2>Évolution du MMR</h2></div>
+    <section class="ar-card">
+      ${chartHtml()}
+      <form class="mmr-form" id="mmrForm" style="margin-top:14px">
+        <div><label class="ar-lbl">Date</label><input class="ar-in" type="date" id="mDate" value="${new Date().toISOString().slice(0, 10)}" required></div>
+        <div><label class="ar-lbl">Rang 3v3</label><select class="ar-sel" id="mRank"><option value="">—</option>${RL.RANKS.map(r => `<option${last && last.rank === r ? ' selected' : ''}>${r}</option>`).join('')}</select></div>
+        <div><label class="ar-lbl">MMR 3v3</label><input class="ar-in mono" type="number" id="m3" min="0" max="3000" placeholder="ex. 1180" required></div>
+        <div><label class="ar-lbl">MMR 2v2</label><input class="ar-in mono" type="number" id="m2" min="0" max="3000" placeholder="facultatif"></div>
+        <button class="btn btn-primary" type="submit">Enregistrer</button>
+      </form>
+      ${mmrTable()}
+    </section>`;
+
+  document.querySelectorAll('.node').forEach(b => b.addEventListener('click', () => pickLevel(b.dataset.id)));
+  $('#mPrev').onclick = () => { month = shiftMonth(month, -1); refreshGoals(); };
+  $('#mNext').onclick = () => { month = shiftMonth(month, 1); refreshGoals(); };
+  $('#addGoal').onclick = () => editGoal();
+  bindGoals();
+  $('#mmrForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const entry = { date: $('#mDate').value, rank: $('#mRank').value, m3: Number($('#m3').value) || null, m2: Number($('#m2').value) || null };
+    fiche.mmr = (fiche.mmr || []).filter(x => x.date !== entry.date).concat(entry);
+    save(); render(); AR.toast('MMR enregistré.');
+  });
+  document.querySelectorAll('[data-del-mmr]').forEach(b => b.onclick = () => {
+    if (!confirm('Supprimer cette saisie ?')) return;
+    fiche.mmr = fiche.mmr.filter(x => x.date !== b.dataset.delMmr); save(); render();
+  });
+  if (lastPopped) { const n = document.querySelector(`.node[data-id="${lastPopped}"]`); if (n) n.classList.add('pop'); lastPopped = null; }
+}
+
+function branchHtml(b) {
+  const levels = fiche.levels || {};
+  const pct = RL.score(levels, b.mechs);
+  const counts = LV.map(l => b.mechs.filter(m => (levels[m.id] || 0) === l.v).length);
+  return `<article class="branch">
+    <div class="b-head">
+      <span class="b-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${b.icon}"/></svg></span>
+      <span class="b-title">${b.label}</span><span class="b-pct">${pct}%</span>
+    </div>
+    <div class="compo">${LV.slice().reverse().map(l => `<i style="--c:${l.color};width:${counts[l.v] / b.mechs.length * 100}%"></i>`).join('')}</div>
+    ${RL.TIERS.map(t => {
+      const ms = b.mechs.filter(m => m.t === t.t);
+      if (!ms.length) return '';
+      const done = ms.every(m => (levels[m.id] || 0) >= 3);
+      return `<div class="tier${done ? ' done' : ''}"><div class="tier-lbl">${t.label}</div><div class="nodes">${ms.map(m => {
+        const v = levels[m.id] || 0, l = LV[v];
+        const reqOk = !m.req || m.req.every(r => (levels[r] || 0) >= 2);
+        return `<button class="node${!reqOk && v === 0 ? ' hint' : ''}" data-id="${m.id}" style="--c:${l.color}" title="${esc(m.tip)}">
+          <span class="lv"></span><span class="nm">${esc(m.label)}</span><span class="st">${l.short}</span></button>`;
+      }).join('')}</div></div>`;
+    }).join('')}
+  </article>`;
+}
+
+function pickLevel(id) {
+  const m = RL.byId[id], cur = (fiche.levels || {})[id] || 0;
+  const reqs = (m.req || []).map(r => RL.byId[r]).filter(Boolean);
+  const md = AR.modal(`
+    <div class="ar-sub">${RL.TREE.find(b => b.id === m.branch).label} · ${RL.TIERS[m.t - 1].label}</div>
+    <h3 class="modal-title" style="margin:4px 0 6px">${esc(m.label)}</h3>
+    <p class="dim" style="font-size:14px">${esc(m.tip)}</p>
+    ${reqs.length ? `<p class="ar-sub" style="margin-top:8px">Conseillé avant : ${reqs.map(r => esc(r.label)).join(', ')}</p>` : ''}
+    <div class="lvpick">${LV.slice().reverse().map(l => `<button class="lvbtn${l.v === cur ? ' on' : ''}" data-v="${l.v}" style="--c:${l.color}"><i class="sw" style="--c:${l.color}"></i>${l.label}</button>`).join('')}</div>
+    <div class="modal-actions"><button class="btn btn-ghost" data-close>Fermer</button></div>`, { width: 420 });
+  md.el.querySelectorAll('.lvbtn').forEach(b => b.onclick = () => {
+    const v = Number(b.dataset.v);
+    fiche.levels = Object.assign({}, fiche.levels, { [id]: v });
+    md.close(); lastPopped = id; save(); render();
+    if (v === 4 && cur < 4) AR.toast(m.label + ' : parfaitement intégré !');
+  });
+}
+
+/* ---- Objectifs ---- */
+const GOAL_STATUS = {
+  propose: { label: 'Proposé', c: 'var(--muted)' },
+  valide:  { label: 'Validé', c: 'var(--accent)' }
+};
+const GOAL_RESULT = {
+  atteint: { label: 'Atteint', c: 'var(--ok)' },
+  partiel: { label: 'Partiel', c: 'var(--warn)' },
+  manque:  { label: 'Non atteint', c: 'var(--err)' }
+};
+function shiftMonth(k, d) { const [y, m] = k.split('-').map(Number); return AR.monthKey(new Date(y, m - 1 + d, 1)); }
+function goalsHtml() {
+  const list = (fiche.goals || []).filter(g => g.month === month);
+  if (!list.length) return `<div class="ar-empty">Aucun objectif pour ${AR.monthLabel(month).toLowerCase()}. Fixe-toi 1 à 3 objectifs concrets, l'arbitre les valide.</div>`;
+  const staff = AR.isStaff();
+  return list.map(g => {
+    const s = GOAL_STATUS[g.status] || GOAL_STATUS.propose, r = g.result && GOAL_RESULT[g.result];
+    return `<div class="goal">
+      <div style="flex:1">
+        <div class="goal-txt">${esc(g.text)}</div>
+        <div class="goal-meta"><span class="ar-pill" style="--c:${s.c}">${s.label}</span>${r ? `<span class="ar-pill" style="--c:${r.c}">${r.label}</span>` : ''}
+          ${g.mech ? `<span class="ar-pill" style="--c:var(--dim)">${esc((RL.byId[g.mech] || {}).label || '')}</span>` : ''}
+          ${g.note ? `<span class="ar-sub" style="align-self:center">Arbitre : ${esc(g.note)}</span>` : ''}</div>
+      </div>
+      <div class="goal-act">
+        ${staff ? `<button class="btn btn-sm" data-arb="${g.id}">Arbitrer</button>` : ''}
+        ${staff || g.status !== 'valide' ? `<button class="btn btn-ghost btn-sm" data-edit-goal="${g.id}">Modifier</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+function refreshGoals() { $('#mLbl').textContent = AR.monthLabel(month); $('#goals').innerHTML = goalsHtml(); bindGoals(); }
+function bindGoals() {
+  document.querySelectorAll('[data-edit-goal]').forEach(b => b.onclick = () => editGoal(b.dataset.editGoal));
+  document.querySelectorAll('[data-arb]').forEach(b => b.onclick = () => arbitrate(b.dataset.arb));
+}
+function editGoal(id) {
+  const g = id ? fiche.goals.find(x => x.id === id) : { text: '', mech: '' };
+  const md = AR.modal(`
+    <h3 class="modal-title">${id ? 'Modifier l’objectif' : 'Nouvel objectif'} · ${AR.monthLabel(month)}</h3>
+    <label class="ar-lbl">Objectif (concret et mesurable)</label>
+    <textarea class="ar-ta" id="gTxt" placeholder="ex. Passer le speed flip de « à perfectionner » à « acquis » sur 9 kickoffs sur 10">${esc(g.text)}</textarea>
+    <label class="ar-lbl">Mécanique liée (facultatif)</label>
+    <select class="ar-sel" id="gMech"><option value="">—</option>${RL.TREE.map(b => `<optgroup label="${b.label}">${b.mechs.map(m => `<option value="${m.id}"${g.mech === m.id ? ' selected' : ''}>${m.label}</option>`).join('')}</optgroup>`).join('')}</select>
+    <div class="modal-actions">${id ? '<button class="btn btn-danger" id="gDel">Supprimer</button>' : ''}<button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="gOk">Enregistrer</button></div>`);
+  md.el.querySelector('#gOk').onclick = () => {
+    const text = md.el.querySelector('#gTxt').value.trim();
+    if (!text) return;
+    if (id) Object.assign(g, { text, mech: md.el.querySelector('#gMech').value });
+    else fiche.goals = (fiche.goals || []).concat({ id: AR.uid(), month, text, mech: md.el.querySelector('#gMech').value, status: 'propose', by: (AR.profile() || {}).name || '', at: Date.now() });
+    md.close(); save(); render();
+  };
+  const del = md.el.querySelector('#gDel');
+  if (del) del.onclick = () => { if (!confirm('Supprimer cet objectif ?')) return; fiche.goals = fiche.goals.filter(x => x.id !== id); md.close(); save(); render(); };
+}
+function arbitrate(id) {
+  const g = fiche.goals.find(x => x.id === id);
+  const md = AR.modal(`
+    <h3 class="modal-title">Arbitrage</h3>
+    <p style="white-space:pre-wrap">${esc(g.text)}</p>
+    <label class="ar-lbl">Statut</label>
+    <div class="ar-seg" id="aSt">${Object.entries(GOAL_STATUS).map(([k, v]) => `<button type="button" data-v="${k}" class="${(g.status || 'propose') === k ? 'on' : ''}">${v.label}</button>`).join('')}</div>
+    <label class="ar-lbl">Bilan de fin de mois</label>
+    <div class="ar-seg" id="aRes"><button type="button" data-v="" class="${!g.result ? 'on' : ''}">En cours</button>${Object.entries(GOAL_RESULT).map(([k, v]) => `<button type="button" data-v="${k}" class="${g.result === k ? 'on' : ''}">${v.label}</button>`).join('')}</div>
+    <label class="ar-lbl">Commentaire de l’arbitre</label>
+    <input class="ar-in" id="aNote" value="${esc(g.note || '')}" placeholder="facultatif">
+    <div class="modal-actions"><button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="aOk">Enregistrer</button></div>`, { width: 480 });
+  md.el.querySelectorAll('.ar-seg').forEach(seg => seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  }));
+  md.el.querySelector('#aOk').onclick = () => {
+    g.status = md.el.querySelector('#aSt .on').dataset.v;
+    g.result = md.el.querySelector('#aRes .on').dataset.v || null;
+    g.note = md.el.querySelector('#aNote').value.trim();
+    md.close(); save(); render();
+  };
+}
+
+/* ---- MMR ---- */
+function chartHtml() {
+  const pts = (fiche.mmr || []).filter(x => x.m3).sort((a, b) => a.date < b.date ? -1 : 1);
+  if (pts.length < 2) return `<div class="ar-empty">${pts.length ? 'Encore une saisie et la courbe apparaît.' : 'Aucune saisie pour l’instant. Note ton MMR 3v3 chaque semaine.'}</div>`;
+  const W = 760, H = 190, P = { l: 40, r: 12, t: 12, b: 24 };
+  const vals = pts.map(p => p.m3), lo = Math.floor((Math.min(...vals) - 20) / 50) * 50, hi = Math.ceil((Math.max(...vals) + 20) / 50) * 50;
+  const t0 = new Date(pts[0].date).getTime(), t1 = new Date(pts[pts.length - 1].date).getTime() || t0 + 1;
+  const x = d => P.l + (new Date(d).getTime() - t0) / Math.max(t1 - t0, 1) * (W - P.l - P.r);
+  const y = v => P.t + (1 - (v - lo) / (hi - lo)) * (H - P.t - P.b);
+  const ticks = []; for (let v = lo; v <= hi; v += Math.max(50, Math.round((hi - lo) / 4 / 50) * 50)) ticks.push(v);
+  const path = pts.map((p, i) => (i ? 'L' : 'M') + x(p.date).toFixed(1) + ' ' + y(p.m3).toFixed(1)).join(' ');
+  const area = path + ` L${x(pts[pts.length - 1].date).toFixed(1)} ${H - P.b} L${x(pts[0].date).toFixed(1)} ${H - P.b} Z`;
+  const fmt = d => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Évolution du MMR 3v3">
+    <g class="grid">${ticks.map(v => `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${P.l - 6}" y="${y(v) + 3}" text-anchor="end">${v}</text>`).join('')}</g>
+    <path d="${area}" fill="var(--accent)" opacity=".08"/>
+    <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    ${pts.map(p => `<circle cx="${x(p.date)}" cy="${y(p.m3)}" r="3.2" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"><title>${fmt(p.date)} · ${p.m3}${p.rank ? ' · ' + p.rank : ''}</title></circle>`).join('')}
+    <text x="${P.l}" y="${H - 6}">${fmt(pts[0].date)}</text><text x="${W - P.r}" y="${H - 6}" text-anchor="end">${fmt(pts[pts.length - 1].date)}</text>
+  </svg>`;
+}
+function mmrTable() {
+  const rows = (fiche.mmr || []).slice().sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 8);
+  if (!rows.length) return '';
+  return `<div class="ar-scroll" style="margin-top:14px"><table class="ar-table"><thead><tr><th>Date</th><th>Rang</th><th>3v3</th><th>2v2</th><th></th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${new Date(r.date).toLocaleDateString('fr-FR')}</td><td style="color:${RL.rankColor(r.rank)}">${esc(r.rank || '—')}</td>
+      <td class="mono">${r.m3 || '—'}</td><td class="mono">${r.m2 || '—'}</td><td style="text-align:right"><button class="btn btn-ghost btn-sm" data-del-mmr="${r.date}">Supprimer</button></td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+</script>
+</body>
+</html>

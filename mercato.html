@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARCHI RL — Mercato</title>
+<link rel="icon" type="image/png" href="assets/logo-plazma.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css?v=1.0.0">
+<link rel="stylesheet" href="assets/app.css?v=1.0.0">
+<style>
+  .slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) 24px minmax(0,1fr);gap:14px;align-items:stretch}
+  .slots .sep{width:1px;background:var(--border);justify-self:center}
+  @media(max-width:860px){.slots{grid-template-columns:1fr 1fr}.slots .sep{display:none}}
+  @media(max-width:520px){.slots{grid-template-columns:1fr}}
+  .slot{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;display:flex;flex-direction:column;gap:10px;min-height:190px}
+  .slot.empty{border-style:dashed;align-items:center;justify-content:center;color:var(--muted);text-align:center;cursor:pointer}
+  .slot.empty:hover{border-color:var(--accent);color:var(--accent)}
+  .slot-top{display:flex;gap:12px;align-items:center}
+  .slot-name{font-weight:600;font-size:1.05rem}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+  .kv dt{color:var(--muted)} .kv dd{text-align:right}
+  .slot-foot{margin-top:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .slot-lbl{font-size:12px;color:var(--muted);margin-bottom:8px}
+
+  .board{display:grid;grid-template-columns:repeat(6,minmax(190px,1fr));gap:12px;overflow-x:auto;padding-bottom:6px}
+  .col{background:var(--surface-2);border-radius:var(--r-lg);padding:10px;display:flex;flex-direction:column;gap:8px;min-height:220px}
+  .col-h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;padding:2px 4px 6px}
+  .col-h .n{margin-left:auto;color:var(--muted);font-family:var(--font-mono);font-weight:400}
+  .cand{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 11px;cursor:pointer;text-align:left;font:inherit;color:var(--text);width:100%}
+  .cand:hover{border-color:var(--border-2)}
+  .cand-n{font-weight:600;font-size:13.5px;display:flex;gap:6px;align-items:center}
+  .cand-m{font-size:12px;color:var(--dim);margin-top:3px}
+  .cand-s{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+  .score{font-family:var(--font-mono);font-size:12px;padding:1px 7px;border-radius:999px;background:var(--surface-2)}
+
+  .trial{display:grid;gap:10px;margin-top:6px}
+  .trow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+  .trow .w{font-size:11px;color:var(--muted)}
+  .stars{display:flex;gap:4px}
+  .stars button{width:30px;height:30px;border-radius:var(--r-sm);border:1px solid var(--border-2);background:var(--surface-2);color:var(--dim);font:inherit;font-size:13px;cursor:pointer}
+  .stars button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .tscore{display:flex;align-items:baseline;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+  .flags{font-size:12.5px;color:var(--dim);background:var(--surface-2);border-radius:var(--r);padding:10px 12px;margin-top:12px}
+  .flags b{color:var(--text)}
+</style>
+</head>
+<body>
+<main class="page" style="max-width:1240px">
+  <div class="ar-head">
+    <div>
+      <h1>Mercato</h1>
+      <p>Le roster actuel et le suivi des candidats, de la détection à l'intégration. Visible uniquement par le staff.</p>
+    </div>
+    <div class="ar-tools">
+      <div class="ar-seg" id="view"><button data-v="roster" class="on">Roster</button><button data-v="pipe">Recrutement</button></div>
+      <button class="btn btn-primary" id="addBtn">Ajouter un joueur</button>
+    </div>
+  </div>
+  <div id="root"><div class="ar-empty">Chargement…</div></div>
+</main>
+
+<script src="assets/archi-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="assets/rl-data.js?v=1.0.0"></script>
+<script src="assets/archi.js?v=1.0.0" data-access="staff"></script>
+<script>
+AR.mountNav('mercato');
+const $ = s => document.querySelector(s), esc = AR.esc;
+const col = () => AR.db.collection('rl-mercato');
+let cands = [], view = 'roster';
+const STARTERS = 3;
+
+AR.ready.then(({ profile }) => {
+  if (!profile || !AR.isStaff()) return;
+  col().onSnapshot(s => {
+    cands = s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    render();
+  }, e => { console.error(e); $('#root').innerHTML = '<div class="ar-empty">Lecture impossible (droits Firestore ?).</div>'; });
+});
+
+$('#view').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  view = b.dataset.v; $('#view').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); render();
+});
+$('#addBtn').onclick = () => edit(null, view === 'roster' ? { stage: 'retenu' } : { stage: 'repere' });
+
+/* Le roster central (rl/roster) est dérivé du mercato : titulaires + remplaçant. */
+function publishRoster() {
+  const players = cands.filter(c => c.roster).sort((a, b) => (a.roster === b.roster ? (a.order || 0) - (b.order || 0) : a.roster === 'titulaire' ? -1 : 1))
+    .map(c => ({ id: c.id, name: c.name, emoji: c.emoji || '', status: c.roster }));
+  return AR.db.collection('rl').doc('roster').set({ players, _savedAt: Date.now() });
+}
+async function saveCand(c) {
+  const id = c.id || col().doc().id;
+  const data = Object.assign({}, c); delete data.id;
+  data.updatedAt = Date.now(); if (!data.createdAt) data.createdAt = Date.now();
+  await col().doc(id).set(data);
+  const i = cands.findIndex(x => x.id === id);
+  if (i >= 0) cands[i] = Object.assign({ id }, data); else cands.push(Object.assign({ id }, data));
+  await publishRoster();
+  return id;
+}
+
+function render() {
+  if (view === 'roster') renderRoster(); else renderPipe();
+}
+
+const metaKv = c => `<dl class="kv">
+  <dt>Rang</dt><dd style="color:${RL.rankColor(c.rank)}">${esc(c.rank || '—')}</dd>
+  <dt>MMR 3v3</dt><dd class="mono">${c.mmr || '—'}</dd>
+  <dt>Âge</dt><dd>${c.age ? c.age + ' ans' : '—'}</dd>
+  <dt>Heures</dt><dd class="mono">${c.hours || '—'}</dd>
+  <dt>Plateforme</dt><dd>${esc(c.platform || '—')}</dd></dl>`;
+
+function slotHtml(c, kind) {
+  if (!c) return `<button class="slot empty" data-empty="${kind}">+ ${kind === 'titulaire' ? 'Titulaire' : 'Remplaçant'}<span class="ar-sub" style="margin-top:4px">Choisir un joueur retenu</span></button>`;
+  return `<div class="slot">
+    <div class="slot-top"><div class="ar-av">${esc(c.emoji || AR.initials(c.name))}</div><div><div class="slot-name">${esc(c.name)}</div><div class="ar-sub">${esc(c.style || '')}</div></div></div>
+    ${metaKv(c)}
+    <div class="slot-foot">
+      <button class="btn btn-sm" data-open="${c.id}">Fiche</button>
+      <a class="btn btn-sm btn-ghost" href="progression.html?p=${encodeURIComponent(c.id)}">Progression</a>
+      <button class="btn btn-sm btn-danger" data-out="${c.id}" title="Retirer du roster">Retirer</button>
+    </div></div>`;
+}
+function renderRoster() {
+  const tit = cands.filter(c => c.roster === 'titulaire').sort((a, b) => (a.order || 0) - (b.order || 0));
+  const sub = cands.filter(c => c.roster === 'remplacant');
+  const slots = [];
+  for (let i = 0; i < Math.max(STARTERS, tit.length); i++) slots.push(slotHtml(tit[i], 'titulaire'));
+  const avgMmr = tit.filter(c => c.mmr).length ? Math.round(tit.filter(c => c.mmr).reduce((s, c) => s + Number(c.mmr), 0) / tit.filter(c => c.mmr).length) : null;
+  $('#root').innerHTML = `
+    <div class="ar-grid ar-g4" style="margin-bottom:18px">
+      <div class="ar-card"><div class="ar-sub">Titulaires</div><div class="ar-kpi">${tit.length}<span class="ar-sub"> / ${STARTERS}</span></div></div>
+      <div class="ar-card"><div class="ar-sub">Remplaçant</div><div class="ar-kpi">${sub.length}</div></div>
+      <div class="ar-card"><div class="ar-sub">MMR 3v3 moyen (titulaires)</div><div class="ar-kpi">${avgMmr || '—'}</div></div>
+      <div class="ar-card"><div class="ar-sub">Candidats en cours</div><div class="ar-kpi">${cands.filter(c => !c.roster && ['contacte', 'entretien', 'essai'].includes(c.stage)).length}</div></div>
+    </div>
+    <div class="slots">
+      <div style="grid-column:1/4" class="slot-lbl">Titulaires</div><div></div><div class="slot-lbl">Remplaçant</div>
+      ${slots.slice(0, STARTERS).join('')}<div class="sep"></div>${slotHtml(sub[0], 'remplacant')}
+      ${slots.slice(STARTERS).join('')}${sub.slice(1).map(c => slotHtml(c, 'remplacant')).join('')}
+    </div>`;
+  bind();
+  document.querySelectorAll('[data-empty]').forEach(b => b.onclick = () => assign(b.dataset.empty));
+  document.querySelectorAll('[data-out]').forEach(b => b.onclick = async () => {
+    const c = cands.find(x => x.id === b.dataset.out);
+    if (!confirm(`Retirer ${c.name} du roster ? Sa fiche de progression est conservée.`)) return;
+    c.roster = null; await saveCand(c); render();
+  });
+}
+function assign(kind) {
+  const pool = cands.filter(c => !c.roster && c.stage !== 'refuse').sort((a, b) => (a.stage === 'retenu' ? -1 : 1) - (b.stage === 'retenu' ? -1 : 1));
+  const md = AR.modal(`<h3 class="modal-title">Ajouter un ${kind === 'titulaire' ? 'titulaire' : 'remplaçant'}</h3>
+    ${pool.length ? `<div style="display:flex;flex-direction:column;gap:6px">${pool.map(c => `<button class="cand" data-pick="${c.id}"><div class="cand-n">${esc(c.name)}<span class="ar-pill" style="--c:${(RL.STAGES.find(s => s.id === c.stage) || {}).color};margin-left:auto">${(RL.STAGES.find(s => s.id === c.stage) || {}).label || ''}</span></div><div class="cand-m">${esc(c.rank || '')} ${c.mmr ? '· ' + c.mmr : ''}</div></button>`).join('')}</div>`
+      : '<div class="ar-empty">Aucun joueur disponible. Crée une fiche avec « Ajouter un joueur ».</div>'}
+    <div class="modal-actions"><button class="btn btn-ghost" data-close>Fermer</button><button class="btn btn-primary" id="newOne">Nouveau joueur</button></div>`, { width: 460 });
+  md.el.querySelectorAll('[data-pick]').forEach(b => b.onclick = async () => {
+    const c = cands.find(x => x.id === b.dataset.pick);
+    c.roster = kind; c.stage = 'retenu'; c.order = Date.now();
+    md.close(); await saveCand(c); AR.toast(c.name + ' ajouté au roster.'); render();
+  });
+  md.el.querySelector('#newOne').onclick = () => { md.close(); edit(null, { stage: 'retenu', roster: kind, order: Date.now() }); };
+}
+
+function renderPipe() {
+  const pool = cands.filter(c => !c.roster);
+  $('#root').innerHTML = `<div class="board">${RL.STAGES.map(s => {
+    const list = pool.filter(c => (c.stage || 'repere') === s.id).sort((a, b) => (RL.trialScore(b.trial) || 0) - (RL.trialScore(a.trial) || 0));
+    return `<div class="col"><div class="col-h"><span class="ar-dot" style="--c:${s.color}"></span>${s.label}<span class="n">${list.length}</span></div>
+      ${list.map(c => {
+        const sc = RL.trialScore(c.trial);
+        return `<button class="cand" data-open="${c.id}"><div class="cand-n">${esc(c.name)}</div>
+          <div class="cand-m"><span style="color:${RL.rankColor(c.rank)}">${esc(c.rank || 'Rang ?')}</span>${c.age ? ' · ' + c.age + ' ans' : ''}${c.platform ? ' · ' + esc(c.platform) : ''}</div>
+          <div class="cand-s"><span class="ar-sub">${c.mmr ? 'MMR ' + c.mmr : ''}</span>${sc != null ? `<span class="score" title="Note d'essai">${sc}/100</span>` : ''}</div></button>`;
+      }).join('') || '<div class="ar-sub" style="text-align:center;padding:14px 0">—</div>'}
+    </div>`;
+  }).join('')}</div>
+  <div class="flags"><b>Signaux d'alerte</b> : critique systématique des anciennes équipes · retards ou absences dès l'essai · ball chase sans rotation · muet au micro · rang obtenu uniquement en 2v2.</div>`;
+  bind();
+}
+function bind() { document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => edit(b.dataset.open)); }
+
+function edit(id, preset) {
+  const c = id ? JSON.parse(JSON.stringify(cands.find(x => x.id === id))) : Object.assign({ trial: {} }, preset || {});
+  c.trial = c.trial || {};
+  const f = (k, label, type, ph) => `<div><label class="ar-lbl">${label}</label><input class="ar-in${type === 'number' ? ' mono' : ''}" data-k="${k}" type="${type || 'text'}" value="${esc(c[k] == null ? '' : c[k])}" placeholder="${ph || ''}"></div>`;
+  const md = AR.modal(`
+    <h3 class="modal-title">${id ? esc(c.name) : 'Nouveau joueur'}</h3>
+    <div class="ar-row">${f('name', 'Pseudo *', 'text')}${f('age', 'Âge', 'number')}</div>
+    <div class="ar-row">
+      <div><label class="ar-lbl">Rang 3v3</label><select class="ar-sel" data-k="rank"><option value="">—</option>${RL.RANKS.map(r => `<option${c.rank === r ? ' selected' : ''}>${r}</option>`).join('')}</select></div>
+      ${f('mmr', 'MMR 3v3', 'number')}</div>
+    <div class="ar-row">
+      <div><label class="ar-lbl">Plateforme</label><select class="ar-sel" data-k="platform">${['', 'PC', 'PlayStation', 'Xbox', 'Switch'].map(p => `<option${c.platform === p ? ' selected' : ''}>${p}</option>`).join('')}</select></div>
+      ${f('hours', 'Heures de jeu', 'number')}</div>
+    <div class="ar-row">${f('availability', 'Disponibilités', 'text', 'ex. lun, mer, jeu 21h-23h')}${f('style', 'Style de jeu', 'text', 'ex. défensif, constant')}</div>
+    <div class="ar-row">${f('tracker', 'Lien tracker', 'url', 'https://…')}${f('discord', 'Discord', 'text')}</div>
+    <div class="ar-row">
+      <div><label class="ar-lbl">Étape</label><select class="ar-sel" data-k="stage">${RL.STAGES.map(s => `<option value="${s.id}"${(c.stage || 'repere') === s.id ? ' selected' : ''}>${s.label}</option>`).join('')}</select></div>
+      <div><label class="ar-lbl">Roster</label><select class="ar-sel" data-k="roster"><option value="">Hors roster</option><option value="titulaire"${c.roster === 'titulaire' ? ' selected' : ''}>Titulaire</option><option value="remplacant"${c.roster === 'remplacant' ? ' selected' : ''}>Remplaçant</option></select></div>
+    </div>
+
+    <h3 style="margin:20px 0 4px">Grille d'essai</h3>
+    <div class="ar-sub">Note chaque critère de 1 à 5 après 2 ou 3 sessions de scrim.</div>
+    <div class="trial">${RL.TRIAL.map(t => `<div class="trow"><div>${t.label} <span class="w">${t.w} %</span></div>
+      <div class="stars" data-crit="${t.id}">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-n="${n}" class="${(c.trial[t.id] || 0) >= n ? 'on' : ''}">${n}</button>`).join('')}</div></div>`).join('')}</div>
+    <div class="tscore"><span class="ar-kpi" id="tScore">${RL.trialScore(c.trial) ?? '—'}</span><span class="ar-sub">/ 100</span></div>
+
+    <label class="ar-lbl">Notes (entretien, essai, période d'intégration)</label>
+    <textarea class="ar-ta" data-k="notes">${esc(c.notes || '')}</textarea>
+    ${c.tracker ? `<p style="margin-top:8px"><a href="${esc(c.tracker)}" target="_blank" rel="noopener" style="color:var(--accent)">Ouvrir le tracker ↗</a></p>` : ''}
+    <div class="modal-actions">${id ? '<button class="btn btn-danger" id="del">Supprimer</button>' : ''}<button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`, { width: 640 });
+
+  md.el.querySelectorAll('.stars').forEach(st => st.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const n = Number(b.dataset.n), k = st.dataset.crit;
+    c.trial[k] = c.trial[k] === n ? 0 : n;
+    st.querySelectorAll('button').forEach(x => x.classList.toggle('on', Number(x.dataset.n) <= c.trial[k]));
+    md.el.querySelector('#tScore').textContent = RL.trialScore(c.trial) ?? '—';
+  }));
+  md.el.querySelector('#ok').onclick = async () => {
+    md.el.querySelectorAll('[data-k]').forEach(i => { const v = i.value.trim(); c[i.dataset.k] = i.type === 'number' ? (v ? Number(v) : null) : v; });
+    c.roster = c.roster || null;
+    if (!c.name) { AR.toast('Le pseudo est obligatoire.', 'err'); return; }
+    if (c.roster && !c.order) c.order = Date.now();
+    try { await saveCand(c); md.close(); AR.toast('Fiche enregistrée.'); render(); }
+    catch (e) { console.error(e); AR.toast('Enregistrement refusé.', 'err'); }
+  };
+  const del = md.el.querySelector('#del');
+  if (del) del.onclick = async () => {
+    if (!confirm(`Supprimer définitivement la fiche de ${c.name} ?`)) return;
+    await col().doc(id).delete(); cands = cands.filter(x => x.id !== id); await publishRoster(); md.close(); render();
+  };
+}
+</script>
+</body>
+</html>

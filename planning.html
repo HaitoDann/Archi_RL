@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARCHI RL — Planning</title>
+<link rel="icon" type="image/png" href="assets/logo-plazma.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css?v=1.0.0">
+<link rel="stylesheet" href="assets/app.css?v=1.0.0">
+<style>
+  .week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+  @media(max-width:1000px){.week{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  @media(max-width:620px){.week{grid-template-columns:1fr}}
+  .day{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:12px;display:flex;flex-direction:column;gap:8px;min-height:170px}
+  .day.today{border-color:var(--accent-line);box-shadow:inset 0 2px 0 var(--accent)}
+  .day-h{display:flex;justify-content:space-between;align-items:baseline}
+  .day-h b{font-size:14px}
+  .day-h span{font-size:12px;color:var(--muted)}
+  .sess{border-radius:var(--r);padding:8px 10px;background:color-mix(in srgb,var(--c) 12%,var(--surface));border-left:3px solid var(--c);cursor:pointer;text-align:left;font:inherit;color:var(--text);border-top:0;border-right:0;border-bottom:0;width:100%}
+  .sess .t{font-family:var(--font-mono);font-size:11.5px;color:var(--dim)}
+  .sess .n{font-size:13px;font-weight:600}
+  .add{margin-top:auto;border:1px dashed var(--border-2);background:none;color:var(--muted);border-radius:var(--r);padding:6px;font:inherit;font-size:12.5px;cursor:pointer}
+  .add:hover{color:var(--accent);border-color:var(--accent)}
+  .av-best{font-size:11.5px;color:var(--ok)}
+
+  .dispo{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+  @media(max-width:620px){.dispo{grid-template-columns:repeat(4,1fr)}}
+  .dbtn{border:1px solid var(--border-2);background:var(--surface-2);border-radius:var(--r);padding:10px 6px;font:inherit;color:var(--text);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}
+  .dbtn small{font-size:11.5px;color:var(--c,var(--muted))}
+  .dbtn.ok{--c:var(--ok);border-color:color-mix(in srgb,var(--ok) 50%,transparent);background:color-mix(in srgb,var(--ok) 10%,var(--surface))}
+  .dbtn.maybe{--c:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent);background:color-mix(in srgb,var(--warn) 10%,var(--surface))}
+  .dbtn.no{--c:var(--err);border-color:color-mix(in srgb,var(--err) 45%,transparent);background:color-mix(in srgb,var(--err) 8%,var(--surface))}
+  .cell{width:22px;height:22px;border-radius:6px;margin:auto;background:var(--surface-2)}
+  .cell.ok{background:var(--ok)} .cell.maybe{background:var(--warn)} .cell.no{background:color-mix(in srgb,var(--err) 70%,transparent)}
+  .sum{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--dim);margin-top:10px}
+</style>
+</head>
+<body>
+<main class="page" style="max-width:1240px">
+  <div class="ar-head">
+    <div>
+      <h1>Planning</h1>
+      <p>Le programme de la semaine et les disponibilités de chacun. Mets tes dispos à jour avant le dimanche soir.</p>
+    </div>
+    <div class="ar-tools">
+      <button class="btn btn-ghost btn-sm" id="prev" aria-label="Semaine précédente">←</button>
+      <b id="wLbl" style="min-width:190px;text-align:center"></b>
+      <button class="btn btn-ghost btn-sm" id="next" aria-label="Semaine suivante">→</button>
+      <button class="btn btn-sm" id="today">Cette semaine</button>
+      <span class="sync-pill"><span class="sync-dot" id="syncDot"></span><span id="syncText">…</span></span>
+    </div>
+  </div>
+
+  <section class="week" id="week"></section>
+
+  <h2 style="margin:30px 0 12px">Mes disponibilités</h2>
+  <section class="ar-card">
+    <div class="ar-sub" style="margin-bottom:10px">Clique pour alterner : disponible → incertain → indisponible.</div>
+    <div class="dispo" id="mine"></div>
+  </section>
+
+  <h2 style="margin:30px 0 12px">Disponibilités de l'équipe</h2>
+  <section class="ar-card ar-scroll" id="team"></section>
+</main>
+
+<script src="assets/archi-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="assets/rl-data.js?v=1.0.0"></script>
+<script src="assets/archi.js?v=1.0.0"></script>
+<script>
+AR.mountNav('planning');
+const $ = s => document.querySelector(s), esc = AR.esc;
+const TYPES = Object.fromEntries(RL.SESSION_TYPES.map(t => [t.id, t]));
+const NEXT = { '': 'ok', ok: 'maybe', maybe: 'no', no: '' };
+const LBL = { ok: 'Dispo', maybe: 'Incertain', no: 'Indispo', '': '—' };
+let week = AR.isoWeek(new Date()), sched = { sessions: [] }, link = null, avail = [], me = null;
+
+AR.ready.then(({ user, profile }) => {
+  if (!profile) return;
+  me = user.uid;
+  AR.db.collection('rl-availability').onSnapshot(s => { avail = s.docs.map(d => Object.assign({ uid: d.id }, d.data())); renderAvail(); renderWeek(); });
+  openWeek();
+});
+function openWeek() {
+  const mon = AR.weekMonday(week), sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const f = d => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  $('#wLbl').textContent = `Semaine du ${f(mon)} au ${f(sun)}`;
+  if (link) link.stop();
+  link = AR.sync({ docId: 'schedule-' + week, onData: d => { sched = d || { sessions: [] }; renderWeek(); } });
+  renderAvail();
+}
+$('#prev').onclick = () => { week = AR.weekShift(week, -1); openWeek(); };
+$('#next').onclick = () => { week = AR.weekShift(week, 1); openWeek(); };
+$('#today').onclick = () => { week = AR.isoWeek(new Date()); openWeek(); };
+
+function renderWeek() {
+  const mon = AR.weekMonday(week), todayStr = new Date().toDateString(), staff = AR.isStaff();
+  $('#week').innerHTML = AR.DAYS.map((d, i) => {
+    const date = new Date(mon); date.setDate(mon.getDate() + i);
+    const list = (sched.sessions || []).filter(s => s.day === i).sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1);
+    const okCount = avail.filter(a => ((a.weeks || {})[week] || {})[i] === 'ok').length;
+    return `<div class="day${date.toDateString() === todayStr ? ' today' : ''}">
+      <div class="day-h"><b>${d}</b><span>${date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span></div>
+      ${okCount ? `<div class="av-best">${okCount} dispo${okCount > 1 ? 's' : ''}</div>` : ''}
+      ${list.map(s => { const t = TYPES[s.type] || TYPES.autre; return `<button class="sess" style="--c:${t.color}" data-s="${s.id}"><div class="t">${esc(s.start || '')}${s.end ? '–' + esc(s.end) : ''} · ${t.label}</div><div class="n">${esc(s.title || t.label)}</div></button>`; }).join('')}
+      ${staff ? `<button class="add" data-day="${i}">+ Session</button>` : ''}
+    </div>`;
+  }).join('');
+  document.querySelectorAll('[data-day]').forEach(b => b.onclick = () => editSession(null, Number(b.dataset.day)));
+  document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => editSession(b.dataset.s));
+}
+function editSession(id, day) {
+  const staff = AR.isStaff();
+  const s = id ? sched.sessions.find(x => x.id === id) : { day, start: '21:00', end: '23:00', type: 'scrim', title: '', notes: '' };
+  const t = TYPES[s.type] || TYPES.autre;
+  if (!staff) {
+    AR.modal(`<div class="ar-sub">${AR.DAYS[s.day]} · ${esc(s.start)}${s.end ? '–' + esc(s.end) : ''}</div>
+      <h3 class="modal-title" style="margin-top:4px"><span class="ar-dot" style="--c:${t.color}"></span> ${esc(s.title || t.label)}</h3>
+      <p style="white-space:pre-wrap">${esc(s.notes || 'Pas de consigne particulière.')}</p>
+      <div class="modal-actions"><button class="btn btn-ghost" data-close>Fermer</button></div>`, { width: 420 });
+    return;
+  }
+  const md = AR.modal(`<h3 class="modal-title">${id ? 'Modifier la session' : 'Nouvelle session'} · ${AR.DAYS[s.day]}</h3>
+    <div class="ar-row"><div><label class="ar-lbl">Type</label><select class="ar-sel" id="sType">${RL.SESSION_TYPES.map(x => `<option value="${x.id}"${s.type === x.id ? ' selected' : ''}>${x.label}</option>`).join('')}</select></div>
+      <div><label class="ar-lbl">Jour</label><select class="ar-sel" id="sDay">${AR.DAYS.map((d, i) => `<option value="${i}"${s.day === i ? ' selected' : ''}>${d}</option>`).join('')}</select></div></div>
+    <div class="ar-row"><div><label class="ar-lbl">Début</label><input class="ar-in" type="time" id="sStart" value="${esc(s.start)}"></div><div><label class="ar-lbl">Fin</label><input class="ar-in" type="time" id="sEnd" value="${esc(s.end)}"></div></div>
+    <label class="ar-lbl">Titre</label><input class="ar-in" id="sTitle" value="${esc(s.title)}" placeholder="ex. Scrim vs Team X (Bo5)">
+    <label class="ar-lbl">Consignes</label><textarea class="ar-ta" id="sNotes" placeholder="Objectif de la session, focus rotation, etc.">${esc(s.notes)}</textarea>
+    <div class="modal-actions">${id ? '<button class="btn btn-danger" id="sDel">Supprimer</button>' : ''}<button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="sOk">Enregistrer</button></div>`);
+  md.el.querySelector('#sOk').onclick = () => {
+    const v = { type: $('#sType').value, day: Number($('#sDay').value), start: $('#sStart').value, end: $('#sEnd').value, title: $('#sTitle').value.trim(), notes: $('#sNotes').value.trim() };
+    if (id) Object.assign(s, v); else sched.sessions = (sched.sessions || []).concat(Object.assign({ id: AR.uid() }, v));
+    md.close(); link.save(sched); renderWeek();
+  };
+  const del = md.el.querySelector('#sDel');
+  if (del) del.onclick = () => { sched.sessions = sched.sessions.filter(x => x.id !== id); md.close(); link.save(sched); renderWeek(); };
+}
+
+function renderAvail() {
+  if (!me) return;
+  const mine = (avail.find(a => a.uid === me) || {}).weeks || {};
+  const cur = mine[week] || {};
+  $('#mine').innerHTML = AR.DAYS.map((d, i) => `<button class="dbtn ${cur[i] || ''}" data-d="${i}"><b style="font-size:13px">${d.slice(0, 3)}</b><small>${LBL[cur[i] || '']}</small></button>`).join('');
+  document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+    const i = b.dataset.d, next = Object.assign({}, cur, { [i]: NEXT[cur[i] || ''] });
+    const weeks = Object.assign({}, mine, { [week]: next });
+    // ne garde que les 8 dernières semaines
+    Object.keys(weeks).sort().slice(0, -8).forEach(k => delete weeks[k]);
+    const p = AR.profile() || {};
+    AR.db.collection('rl-availability').doc(me).set({ name: p.name || p.username, playerId: p.playerId || null, weeks })
+      .catch(() => AR.toast('Enregistrement refusé.', 'err'));
+  });
+  const rows = avail.filter(a => a.weeks && a.weeks[week]).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  if (!rows.length) { $('#team').innerHTML = '<div class="ar-empty">Personne n\'a encore renseigné ses dispos pour cette semaine.</div>'; return; }
+  const full = AR.DAYS.map((d, i) => rows.filter(r => r.weeks[week][i] === 'ok').length);
+  const best = AR.DAYS.filter((d, i) => full[i] === rows.length);
+  $('#team').innerHTML = `<table class="ar-table"><thead><tr><th>Membre</th>${AR.DAYS.map(d => `<th style="text-align:center">${d.slice(0, 3)}</th>`).join('')}</tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${esc(r.name || '?')}</td>${AR.DAYS.map((d, i) => `<td><div class="cell ${r.weeks[week][i] || ''}" title="${LBL[r.weeks[week][i] || '']}"></div></td>`).join('')}</tr>`).join('')}
+    <tr><td class="ar-sub">Disponibles</td>${full.map(n => `<td style="text-align:center" class="mono">${n}</td>`).join('')}</tr>
+  </tbody></table>
+  <div class="sum">${best.length ? `Tout le monde est dispo : <b style="color:var(--ok)">${best.join(', ')}</b>` : 'Aucun jour où tout le monde est disponible.'}</div>`;
+}
+</script>
+</body>
+</html>
